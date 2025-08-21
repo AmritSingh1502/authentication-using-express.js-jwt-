@@ -1,6 +1,6 @@
 const express = require('express');
 const mongoose = require('mongoose');
-const bycrypt  = require('bcrypt');
+const bcrypt  = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
 
@@ -9,7 +9,7 @@ const app = express();
 const PORT = 3000;
 
 //connnect to mongodb database
-mongoose.connect('mongodb://localhost:27017/myapp').then(()=> {
+mongoose.connect('mongodb://localhost:27017/myuserapp').then(()=> {
     console.log('Connected to MongoDB');
 }).catch((err:any) => {
     console.error('Error connecting to MongoDB:', err);
@@ -34,10 +34,12 @@ app.use(express.json());
 
 // middleware to authenticate JWT tokens
 const verifyToken = (req: any, res: any, next: any) => {
-    const token = req.headers['authorization'];
-    if(!token){
+    const authheader = req.headers['authorization'];
+    if(!authheader){
         return res.status(401).json({error : "Unauthorized"});
     }
+
+    const token = authheader.split(' ')[1]; 
 
     jwt.verify(token,'secret',(err:any, decoded:any) => {
         if(err){
@@ -53,7 +55,7 @@ const verifyToken = (req: any, res: any, next: any) => {
 
 // router to register a new user
 
-app.post('/register', async( req:any , res:any ) => {
+app.post('/api/register', async( req:any , res:any ) => {
     try {
         // check if user already exists
         const existingUSer  = await User.findOne({email: req.body.email})
@@ -63,7 +65,7 @@ app.post('/register', async( req:any , res:any ) => {
         }
 
         // hash the password
-        const hashedPassword = await bycrypt.hash(req.body.password, 10);
+        const hashedPassword = await bcrypt.hash(req.body.password, 10);
 
         //create a new user
         const user = new User({
@@ -77,4 +79,54 @@ app.post('/register', async( req:any , res:any ) => {
     }catch (error:any) {
         res.status(500).json({error: error.message});
     }
+});
+
+
+// Route to authenticate and log in a user
+app.post('/api/login', async (req:any,  res:any) => {
+  try {
+    // Check if the email exists
+    const user = await User.findOne({ email: req.body.email });
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Compare passwords
+    const passwordMatch = await bcrypt.compare(req.body.password, user.password);
+    if (!passwordMatch) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign({ email: user.email }, 'secret');
+    res.status(200).json({ token });
+  } catch (error) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// protected route to get user detauls
+app.get('/api/user', verifyToken , async (req:any, res:any) => {
+    try {
+        const user = await User.findOne({email: req.user.email});
+
+        if(!user){
+            return res.status(404).json({error: "User not found"});
+        }
+
+        res.status(200).json({username: user.username, email: user.email});
+
+    }catch (e:any){
+        res.status(500).json({error: e.message});
+    }
+});
+
+
+app.get('/',(req:any,res:any) => {
+    res.send('Welcome to the User Management API');
+});
+
+
+app.listen(PORT, () => {
+    console.log(`Server is running on http://localhost:${PORT}`);
 });
